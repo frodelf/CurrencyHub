@@ -1,0 +1,92 @@
+services:
+  #  app:
+  #    build: .
+  #    container_name: currencyhub-app
+  #    env_file: .env
+  #    environment:
+  #      MONGODB_URI: ${MONGODB_URI}
+  #      REDIS_HOST: ${REDIS_HOST}
+  #      REDIS_PORT: ${REDIS_PORT}
+  #      REDIS_PASSWORD: ${REDIS_PASSWORD}
+  #      OXR_API_KEY: ${OXR_API_KEY:-}
+  #      OXR_ENABLED: ${OXR_ENABLED:-false}
+  #      ERA_API_KEY: ${ERA_API_KEY:-}
+  #      ERA_ENABLED: ${ERA_ENABLED:-false}
+  #    ports:
+  #      - "8081:8081"
+  #    depends_on:
+  #      mongodb:
+  #        condition: service_healthy
+  #      redis:
+  #        condition: service_healthy
+  #    labels:
+  #      - "traefik.enable=true"
+  #      - "traefik.http.routers.app.rule=Host(`currencyhub.localhost`)"
+  #      - "traefik.http.routers.app.entrypoints=web"
+  #      - "traefik.http.services.app.loadbalancer.server.port=8081"
+  #    networks:
+  #      - currencyhub-net
+  #    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    container_name: currencyhub-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secret
+      MONGO_INITDB_DATABASE: currencyhub
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "-u", "admin", "-p", "secret", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - currencyhub-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: currencyhub-redis
+    command: redis-server --requirepass redissecret
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "redissecret", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - currencyhub-net
+    restart: unless-stopped
+
+  traefik:
+    image: traefik:v3.0
+    container_name: currencyhub-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - currencyhub-net
+    restart: unless-stopped
+
+volumes:
+  mongodb-data:
+  redis-data:
+
+networks:
+  currencyhub-net:
+    driver: bridge

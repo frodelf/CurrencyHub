@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: CurrencyHub
+
+  mongodb:
+    uri: mongodb://admin:secret@localhost:27017/currencyhub?authSource=admin
+
+  data:
+    mongodb:
+      auto-index-creation: true
+    redis:
+      host: localhost
+      port: 6379
+      password: redissecret
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8081
+  servlet:
+    context-path: /api/v1
+
+management:
+  server:
+    port: 8082
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.example.currencyhub: INFO
+
+app:
+  scheduler:
+    refresh-rate: "0 */5 * * * *"
+  external-api:
+    timeout-seconds: 5
+    concurrency-limit: 10
+    retry-attempts: 3
+    retry-initial-delay-ms: 500
+    retry-max-delay-ms: 10000
+  backfill:
+    default-concurrency-limit: 10
+    max-concurrency-limit: 30
+  redis:
+    current-rates-ttl-minutes: 10
+  providers:
+    nbu:
+      base-url: "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange"
+      enabled: true
+    privatbank:
+      base-url: "https://api.privatbank.ua/p24api"
+      enabled: true
+    monobank:
+      base-url: "https://api.monobank.ua"
+      enabled: true
+    frankfurter:
+      base-url: "https://api.frankfurter.app"
+      enabled: true
+    open-exchange-rates:
+      base-url: "https://openexchangerates.org/api"
+      api-key: ${OXR_API_KEY:}
+      enabled: ${OXR_ENABLED:false}
+    exchange-rate-api:
+      base-url: "https://v6.exchangerate-api.com/v6"
+      api-key: ${ERA_API_KEY:}
+      enabled: ${ERA_ENABLED:false}
+    ecb:
+      base-url: "https://www.ecb.europa.eu/stats/eurofxref"
+      enabled: true
