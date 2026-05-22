@@ -1,5 +1,6 @@
 package com.example.currencyhub.config;
 
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -24,6 +25,7 @@ public class AppProperties {
     public static class ExternalApi {
         private int timeoutSeconds;
         private int concurrencyLimit;
+        @Min(value = 1, message = "{app.external-api.retry-attempts.min}")
         private int retryAttempts;
         private long retryInitialDelayMs;
         private long retryMaxDelayMs;

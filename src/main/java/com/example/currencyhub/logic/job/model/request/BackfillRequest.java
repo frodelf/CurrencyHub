@@ -16,19 +16,19 @@ import java.util.List;
 @NoArgsConstructor
 public class BackfillRequest {
 
-    @NotEmpty(message = "At least one source is required")
+    @NotEmpty(message = "{backfill.sources.notEmpty}")
     private List<String> sources;
 
-    @NotNull(message = "from date is required")
+    @NotNull(message = "{backfill.from.notNull}")
     private LocalDate from;
 
-    @NotNull(message = "to date is required")
+    @NotNull(message = "{backfill.to.notNull}")
     private LocalDate to;
 
     private List<String> baseCurrencies;
     private List<String> currencies;
 
-    @Min(value = 1, message = "concurrencyLimit must be at least 1")
-    @Max(value = 30, message = "concurrencyLimit must not exceed 30")
+    @Min(value = 1, message = "{backfill.concurrencyLimit.min}")
+    @Max(value = 30, message = "{backfill.concurrencyLimit.max}")
     private Integer concurrencyLimit;
 }

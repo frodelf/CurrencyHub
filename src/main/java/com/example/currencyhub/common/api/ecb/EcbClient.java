@@ -1,8 +1,7 @@
 package com.example.currencyhub.common.api.ecb;
 
 import com.example.currencyhub.common.api.ExchangeRateProvider;
-import com.example.currencyhub.common.exception.ProviderClientException;
-import com.example.currencyhub.common.exception.ProviderHttpException;
+import com.example.currencyhub.common.exception.ProviderException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +63,8 @@ public class EcbClient implements ExchangeRateProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -85,10 +86,10 @@ public class EcbClient implements ExchangeRateProvider {
 
         int status = response.statusCode();
         if (status >= 400 && status < 500 && status != 429) {
-            throw new ProviderClientException(SOURCE, status, "HTTP " + status + " from ECB");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from ECB", false);
         }
         if (status != 200) {
-            throw new ProviderHttpException(SOURCE, status, "HTTP " + status + " from ECB");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from ECB", true);
         }
 
         return parseXml(response.body());
@@ -113,8 +114,8 @@ public class EcbClient implements ExchangeRateProvider {
                 try {
                     publishedAt = LocalDate.parse(cube.getAttribute("time"))
                             .atStartOfDay(ZoneOffset.UTC).toInstant();
-                } catch (Exception e) {
-                    log.warn("Could not parse ECB date: {}", cube.getAttribute("time"));
+                } catch (DateTimeParseException e) {
+                    log.warn("Could not parse ECB date '{}': {}", cube.getAttribute("time"), e.getMessage());
                 }
                 continue;
             }

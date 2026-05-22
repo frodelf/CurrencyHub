@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
@@ -45,7 +46,11 @@ public class RatesFetchService {
             results = futures.stream().map(f -> {
                 try {
                     return f.get();
-                } catch (Exception e) {
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("[{}] Interrupted while waiting for provider future: {}", jobId, e.getMessage(), e);
+                    return ProviderResultResponse.failure("UNKNOWN", e.getMessage());
+                } catch (ExecutionException e) {
                     log.error("[{}] Unexpected error collecting provider future: {}", jobId, e.getMessage(), e);
                     return ProviderResultResponse.failure("UNKNOWN", e.getMessage());
                 }
@@ -69,6 +74,10 @@ public class RatesFetchService {
             } finally {
                 semaphore.release();
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[{}] Provider {} interrupted: {}", jobId, provider.getSource(), e.getMessage());
+            return ProviderResultResponse.failure(provider.getSource(), e.getMessage());
         } catch (Exception e) {
             log.error("[{}] Provider {} failed: {}", jobId, provider.getSource(), e.getMessage());
             return ProviderResultResponse.failure(provider.getSource(), e.getMessage());

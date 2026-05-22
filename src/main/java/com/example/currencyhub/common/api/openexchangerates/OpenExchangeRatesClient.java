@@ -1,8 +1,7 @@
 package com.example.currencyhub.common.api.openexchangerates;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.exception.ProviderClientException;
-import com.example.currencyhub.common.exception.ProviderHttpException;
+import com.example.currencyhub.common.exception.ProviderException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
@@ -60,7 +59,8 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -76,7 +76,8 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -104,10 +105,10 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
 
         int status = response.statusCode();
         if (status >= 400 && status < 500 && status != 429) {
-            throw new ProviderClientException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates", false);
         }
         if (status != 200) {
-            throw new ProviderHttpException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates", true);
         }
 
         Map<String, Object> rawMap = objectMapper.readValue(response.body(), new TypeReference<>() {});

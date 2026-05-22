@@ -123,6 +123,7 @@ public class BackfillService {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.warn("[{}] Task interrupted: provider={} date={}: {}", jobId, provider.getSource(), date, e.getMessage());
             mongoTemplate.updateFirst(
                     Query.query(Criteria.where("_id").is(jobId)),
                     new Update().inc("failedTasks", 1),

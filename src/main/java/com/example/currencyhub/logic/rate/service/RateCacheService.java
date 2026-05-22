@@ -2,6 +2,7 @@ package com.example.currencyhub.logic.rate.service;
 
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,7 @@ public class RateCacheService {
             try {
                 String value = objectMapper.writeValueAsString(rate);
                 redisTemplate.opsForValue().set(key, value, ttl);
-            } catch (Exception e) {
+            } catch (JacksonException e) {
                 log.error("Failed to save rate to Redis [key={}]: {}", key, e.getMessage());
             }
         }
@@ -54,7 +55,7 @@ public class RateCacheService {
                 .map(v -> {
                     try {
                         return objectMapper.readValue(v, ExchangeRateDto.class);
-                    } catch (Exception e) {
+                    } catch (JacksonException e) {
                         log.error("Failed to deserialize rate from Redis: {}", e.getMessage());
                         return null;
                     }
@@ -70,7 +71,7 @@ public class RateCacheService {
 
         try {
             return Optional.of(objectMapper.readValue(value, ExchangeRateDto.class));
-        } catch (Exception e) {
+        } catch (JacksonException e) {
             log.error("Failed to deserialize rate from Redis [key={}]: {}", key, e.getMessage());
             return Optional.empty();
         }

@@ -1,8 +1,7 @@
 package com.example.currencyhub.common.api.nbu;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.exception.ProviderClientException;
-import com.example.currencyhub.common.exception.ProviderHttpException;
+import com.example.currencyhub.common.exception.ProviderException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
@@ -24,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
@@ -62,7 +62,8 @@ public class NbuClient implements BackfillCapableProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -77,7 +78,8 @@ public class NbuClient implements BackfillCapableProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -105,10 +107,10 @@ public class NbuClient implements BackfillCapableProvider {
 
         int status = response.statusCode();
         if (status >= 400 && status < 500 && status != 429) {
-            throw new ProviderClientException(SOURCE, status, "HTTP " + status + " from NBU");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from NBU", false);
         }
         if (status != 200) {
-            throw new ProviderHttpException(SOURCE, status, "HTTP " + status + " from NBU");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from NBU", true);
         }
 
         List<Map<String, Object>> rawList = objectMapper.readValue(response.body(), new TypeReference<>() {});
@@ -131,7 +133,8 @@ public class NbuClient implements BackfillCapableProvider {
     private Instant parseExchangeDate(String dateStr) {
         try {
             return LocalDate.parse(dateStr, NBU_DATE_FORMAT).atStartOfDay(ZoneOffset.UTC).toInstant();
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
+            log.warn("Could not parse NBU date '{}': {}", dateStr, e.getMessage());
             return Instant.now();
         }
     }

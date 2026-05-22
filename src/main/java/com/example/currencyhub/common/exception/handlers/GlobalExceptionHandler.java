@@ -1,7 +1,6 @@
 package com.example.currencyhub.common.exception.handlers;
 
 import com.example.currencyhub.common.api.ApiError;
-import com.example.currencyhub.common.exception.ValidationError;
 import com.example.currencyhub.common.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -11,7 +10,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.NoSuchElementException;
 
 @RestControllerAdvice
@@ -19,8 +17,10 @@ import java.util.NoSuchElementException;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<List<ValidationError>> handleValidation(ValidationException ex) {
-        return ResponseEntity.badRequest().body(ex.getErrors());
+    public ResponseEntity<ApiError> handleValidation(ValidationException ex, HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError(400, "Validation Error", "Validation failed",
+                        request.getRequestURI(), Instant.now(), ex.getErrors()));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

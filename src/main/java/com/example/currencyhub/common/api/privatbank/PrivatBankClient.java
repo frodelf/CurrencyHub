@@ -1,8 +1,7 @@
 package com.example.currencyhub.common.api.privatbank;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.exception.ProviderClientException;
-import com.example.currencyhub.common.exception.ProviderHttpException;
+import com.example.currencyhub.common.exception.ProviderException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
@@ -61,7 +60,8 @@ public class PrivatBankClient implements BackfillCapableProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -94,7 +94,8 @@ public class PrivatBankClient implements BackfillCapableProvider {
     @Override
     @SuppressWarnings("unchecked")
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -142,10 +143,10 @@ public class PrivatBankClient implements BackfillCapableProvider {
 
     private void ensureSuccess(int statusCode, String url) {
         if (statusCode >= 400 && statusCode < 500 && statusCode != 429) {
-            throw new ProviderClientException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url);
+            throw new ProviderException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url, false);
         }
         if (statusCode != 200) {
-            throw new ProviderHttpException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url);
+            throw new ProviderException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url, true);
         }
     }
 
@@ -154,6 +155,7 @@ public class PrivatBankClient implements BackfillCapableProvider {
         try {
             return new BigDecimal(value.toString());
         } catch (NumberFormatException e) {
+            log.debug("Could not parse PrivatBank numeric value '{}': {}", value, e.getMessage());
             return null;
         }
     }

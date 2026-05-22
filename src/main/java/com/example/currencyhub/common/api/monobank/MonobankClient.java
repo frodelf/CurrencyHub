@@ -1,8 +1,7 @@
 package com.example.currencyhub.common.api.monobank;
 
 import com.example.currencyhub.common.api.ExchangeRateProvider;
-import com.example.currencyhub.common.exception.ProviderClientException;
-import com.example.currencyhub.common.exception.ProviderHttpException;
+import com.example.currencyhub.common.exception.ProviderException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
@@ -61,7 +60,8 @@ public class MonobankClient implements ExchangeRateProvider {
 
     @Override
     @Retryable(
-            retryFor = {ProviderHttpException.class, IOException.class},
+            retryFor = {ProviderException.class, IOException.class},
+            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
             maxAttemptsExpression = "${app.external-api.retry-attempts}",
             backoff = @Backoff(
                     delayExpression = "${app.external-api.retry-initial-delay-ms}",
@@ -83,13 +83,13 @@ public class MonobankClient implements ExchangeRateProvider {
 
         int status = response.statusCode();
         if (status == 429) {
-            throw new ProviderHttpException(SOURCE, 429, "Monobank rate limit exceeded");
+            throw new ProviderException(SOURCE, 429, "Monobank rate limit exceeded", true);
         }
         if (status >= 400 && status < 500) {
-            throw new ProviderClientException(SOURCE, status, "HTTP " + status + " from Monobank");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Monobank", false);
         }
         if (status != 200) {
-            throw new ProviderHttpException(SOURCE, status, "HTTP " + status + " from Monobank");
+            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Monobank", true);
         }
 
         List<Map<String, Object>> rawList = objectMapper.readValue(response.body(), new TypeReference<>() {});
@@ -131,6 +131,7 @@ public class MonobankClient implements ExchangeRateProvider {
             BigDecimal bd = new BigDecimal(value.toString());
             return bd.compareTo(BigDecimal.ZERO) == 0 ? null : bd;
         } catch (NumberFormatException e) {
+            log.debug("Could not parse Monobank numeric value '{}': {}", value, e.getMessage());
             return null;
         }
     }
