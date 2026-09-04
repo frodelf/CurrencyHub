@@ -1,6 +1,5 @@
 package com.example.currencyhub.logic.job.model.request;
 
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -29,6 +28,5 @@ public class BackfillRequest {
     private List<String> currencies;
 
     @Min(value = 1, message = "{backfill.concurrencyLimit.min}")
-    @Max(value = 30, message = "{backfill.concurrencyLimit.max}")
     private Integer concurrencyLimit;
 }

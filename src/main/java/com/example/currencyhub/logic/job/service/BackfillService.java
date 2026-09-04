@@ -1,7 +1,8 @@
 package com.example.currencyhub.logic.job.service;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.api.ExchangeRateProvider;
+import com.example.currencyhub.common.exception.ValidationError;
+import com.example.currencyhub.common.exception.ValidationException;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.logic.job.model.response.JobStartedResponse;
 import com.example.currencyhub.logic.job.entity.JobStatus;
@@ -12,7 +13,6 @@ import com.example.currencyhub.logic.job.model.request.BackfillRequest;
 import com.example.currencyhub.logic.job.model.response.BackfillStatusResponse;
 import com.example.currencyhub.logic.job.repository.JobDocumentRepository;
 import com.example.currencyhub.logic.rate.service.RateStorageService;
-import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -36,18 +36,19 @@ import java.util.concurrent.Semaphore;
 @RequiredArgsConstructor
 public class BackfillService {
 
-    private final List<ExchangeRateProvider> providers;
+    private final List<BackfillCapableProvider> backfillProviders;
     private final RateStorageService rateStorageService;
     private final JobDocumentRepository jobDocumentRepository;
     private final MongoTemplate mongoTemplate;
     private final AppProperties properties;
 
-    private final ExecutorService backgroundExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService virtualThreadExecutor;
 
     public JobStartedResponse startBackfill(BackfillRequest request) {
         if (request.getFrom().isAfter(request.getTo())) {
             throw new IllegalArgumentException("'from' date must not be after 'to' date");
         }
+        int limit = resolveLimit(request.getConcurrencyLimit());
 
         String jobId = "bf-" + LocalDate.now() + "-" + UUID.randomUUID().toString().substring(0, 8);
 
@@ -63,7 +64,7 @@ public class BackfillService {
                 .build();
         jobDocumentRepository.save(job);
 
-        backgroundExecutor.submit(() -> executeBackfill(request, jobId, backfillProviders, dates));
+        virtualThreadExecutor.submit(() -> executeBackfill(request, jobId, backfillProviders, dates, limit));
 
         log.info("[{}] Backfill job submitted for sources={} from={} to={}",
                 jobId, request.getSources(), request.getFrom(), request.getTo());
@@ -74,14 +75,8 @@ public class BackfillService {
         return jobDocumentRepository.findById(jobId).map(this::toStatusResponse);
     }
 
-    @PreDestroy
-    public void shutdown() {
-        backgroundExecutor.shutdown();
-    }
-
     private void executeBackfill(BackfillRequest request, String jobId,
-            List<BackfillCapableProvider> backfillProviders, List<LocalDate> dates) {
-        int limit = resolveLimit(request.getConcurrencyLimit());
+            List<BackfillCapableProvider> backfillProviders, List<LocalDate> dates, int limit) {
         Semaphore semaphore = new Semaphore(limit);
         List<Runnable> tasks = buildTasks(backfillProviders, dates, jobId, semaphore, request);
 
@@ -173,19 +168,24 @@ public class BackfillService {
     }
 
     private List<ExchangeRateDto> applyFilters(List<ExchangeRateDto> rates, BackfillRequest request) {
+        List<String> currencies = toUpperCase(request.getCurrencies());
+        List<String> baseCurrencies = toUpperCase(request.getBaseCurrencies());
         return rates.stream()
-                .filter(r -> isEmpty(request.getCurrencies()) || request.getCurrencies().contains(r.getCurrency()))
-                .filter(r -> isEmpty(request.getBaseCurrencies()) || request.getBaseCurrencies().contains(r.getBaseCurrency()))
+                .filter(r -> currencies.isEmpty() || currencies.contains(r.getCurrency()))
+                .filter(r -> baseCurrencies.isEmpty() || baseCurrencies.contains(r.getBaseCurrency()))
                 .toList();
+    }
+
+    private List<String> toUpperCase(List<String> values) {
+        if (isEmpty(values)) return List.of();
+        return values.stream().map(String::toUpperCase).toList();
     }
 
     private List<BackfillCapableProvider> resolveProviders(BackfillRequest request) {
         List<String> upperSources = request.getSources().stream().map(String::toUpperCase).toList();
-        return providers.stream()
-                .filter(p -> p instanceof BackfillCapableProvider)
-                .filter(ExchangeRateProvider::isEnabled)
+        return backfillProviders.stream()
+                .filter(BackfillCapableProvider::isEnabled)
                 .filter(p -> upperSources.contains(p.getSource().toUpperCase()))
-                .map(p -> (BackfillCapableProvider) p)
                 .toList();
     }
 
@@ -193,7 +193,11 @@ public class BackfillService {
         int max = properties.getBackfill().getMaxConcurrencyLimit();
         int def = properties.getBackfill().getDefaultConcurrencyLimit();
         if (requested == null) return def;
-        return Math.min(requested, max);
+        if (requested > max) {
+            throw new ValidationException(List.of(new ValidationError(
+                    "concurrencyLimit", "concurrencyLimit must not exceed " + max)));
+        }
+        return requested;
     }
 
     private boolean isEmpty(List<?> list) {

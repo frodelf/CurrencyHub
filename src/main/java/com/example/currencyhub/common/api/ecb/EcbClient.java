@@ -1,28 +1,23 @@
 package com.example.currencyhub.common.api.ecb;
 
 import com.example.currencyhub.common.api.ExchangeRateProvider;
-import com.example.currencyhub.common.exception.ProviderException;
+import com.example.currencyhub.common.api.ProviderHttpExecutor;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -39,7 +34,7 @@ public class EcbClient implements ExchangeRateProvider {
     private static final String SOURCE = "ECB";
 
     private final AppProperties properties;
-    private final HttpClient httpClient;
+    private final ProviderHttpExecutor httpExecutor;
 
     @Override
     public String getSource() {
@@ -62,71 +57,46 @@ public class EcbClient implements ExchangeRateProvider {
     }
 
     @Override
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchCurrentRates() throws Exception {
         String url = properties.getProviders().getEcb().getBaseUrl() + "/eurofxref-daily.xml";
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(properties.getExternalApi().getTimeoutSeconds()))
-                .header("Accept", "application/xml, text/xml")
-                .GET()
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        int status = response.statusCode();
-        if (status >= 400 && status < 500 && status != 429) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from ECB", false);
-        }
-        if (status != 200) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from ECB", true);
-        }
-
+        var response = httpExecutor.get(SOURCE, url, "application/xml, text/xml", Map.of());
         return parseXml(response.body());
     }
 
     private List<ExchangeRateDto> parseXml(String xml) throws Exception {
-        Document doc = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder()
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        Document doc = factory.newDocumentBuilder()
                 .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-
         doc.getDocumentElement().normalize();
 
-        NodeList cubeNodes = doc.getElementsByTagName("Cube");
+        XPath xpath = XPathFactory.newInstance().newXPath();
+
         Instant fetchedAt = Instant.now();
         Instant publishedAt = fetchedAt;
+
+        Element timeCube = (Element) xpath.evaluate(
+                "//*[local-name()='Cube'][@time]", doc, XPathConstants.NODE);
+        if (timeCube != null) {
+            try {
+                publishedAt = LocalDate.parse(timeCube.getAttribute("time"))
+                        .atStartOfDay(ZoneOffset.UTC).toInstant();
+            } catch (DateTimeParseException e) {
+                log.warn("Could not parse ECB date '{}': {}", timeCube.getAttribute("time"), e.getMessage());
+            }
+        }
+
+        NodeList rateNodes = (NodeList) xpath.evaluate(
+                "//*[local-name()='Cube'][@currency]", doc, XPathConstants.NODESET);
+
         List<ExchangeRateDto> result = new ArrayList<>();
-
-        for (int i = 0; i < cubeNodes.getLength(); i++) {
-            Element cube = (Element) cubeNodes.item(i);
-
-            if (cube.hasAttribute("time")) {
-                try {
-                    publishedAt = LocalDate.parse(cube.getAttribute("time"))
-                            .atStartOfDay(ZoneOffset.UTC).toInstant();
-                } catch (DateTimeParseException e) {
-                    log.warn("Could not parse ECB date '{}': {}", cube.getAttribute("time"), e.getMessage());
-                }
-                continue;
-            }
-
-            if (cube.hasAttribute("currency") && cube.hasAttribute("rate")) {
-                String currency = cube.getAttribute("currency");
-                BigDecimal rate = new BigDecimal(cube.getAttribute("rate"));
-                Map<String, String> raw = Map.of("currency", currency, "rate", cube.getAttribute("rate"));
-                result.add(new ExchangeRateDto(SOURCE, "EUR", currency, rate, null, null,
-                        fetchedAt, publishedAt, raw));
-            }
+        for (int i = 0; i < rateNodes.getLength(); i++) {
+            Element cube = (Element) rateNodes.item(i);
+            String currency = cube.getAttribute("currency");
+            BigDecimal rate = new BigDecimal(cube.getAttribute("rate"));
+            Map<String, String> raw = Map.of("currency", currency, "rate", cube.getAttribute("rate"));
+            result.add(new ExchangeRateDto(SOURCE, "EUR", currency, rate, null, null,
+                    fetchedAt, publishedAt, raw));
         }
 
         return result;

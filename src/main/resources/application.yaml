@@ -2,16 +2,20 @@ spring:
   application:
     name: CurrencyHub
 
+  threads:
+    virtual:
+      enabled: true
+
   mongodb:
-    uri: mongodb://admin:secret@localhost:27017/currencyhub?authSource=admin
+    uri: ${MONGODB_URI:mongodb://admin:secret@localhost:27017/currencyhub?authSource=admin}
 
   data:
     mongodb:
       auto-index-creation: true
     redis:
-      host: localhost
-      port: 6379
-      password: redissecret
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redissecret}
   jackson:
     default-property-inclusion: non_null
 
@@ -67,10 +71,6 @@ app:
       base-url: "https://openexchangerates.org/api"
       api-key: ${OXR_API_KEY:}
       enabled: ${OXR_ENABLED:false}
-    exchange-rate-api:
-      base-url: "https://v6.exchangerate-api.com/v6"
-      api-key: ${ERA_API_KEY:}
-      enabled: ${ERA_ENABLED:false}
     ecb:
       base-url: "https://www.ecb.europa.eu/stats/eurofxref"
       enabled: true

@@ -11,4 +11,5 @@ public class ProviderInfoResponse {
     private String source;
     private boolean currentSupported;
     private boolean historicalSupported;
+    private boolean enabled;
 }

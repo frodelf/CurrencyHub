@@ -15,7 +15,7 @@ public class ProviderService {
 
     public List<ProviderInfoResponse> getProviders() {
         return providers.stream()
-                .map(p -> new ProviderInfoResponse(p.getSource(), p.supportsCurrentRates(), p.supportsHistoricalRates()))
+                .map(p -> new ProviderInfoResponse(p.getSource(), p.supportsCurrentRates(), p.supportsHistoricalRates(), p.isEnabled()))
                 .toList();
     }
 }

@@ -6,14 +6,20 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.RedisStringCommands;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 @Slf4j
@@ -27,17 +33,23 @@ public class RateCacheService {
     private final AppProperties properties;
 
     public void saveRates(List<ExchangeRateDto> rates) {
+        if (rates.isEmpty()) return;
+
         Duration ttl = Duration.ofMinutes(properties.getRedis().getCurrentRatesTtlMinutes());
 
-        for (ExchangeRateDto rate : rates) {
-            String key = buildKey(rate.getSource(), rate.getBaseCurrency(), rate.getCurrency());
-            try {
-                String value = objectMapper.writeValueAsString(rate);
-                redisTemplate.opsForValue().set(key, value, ttl);
-            } catch (JacksonException e) {
-                log.error("Failed to save rate to Redis [key={}]: {}", key, e.getMessage());
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (ExchangeRateDto rate : rates) {
+                String key = buildKey(rate.getSource(), rate.getBaseCurrency(), rate.getCurrency());
+                try {
+                    byte[] k = key.getBytes(StandardCharsets.UTF_8);
+                    byte[] v = objectMapper.writeValueAsString(rate).getBytes(StandardCharsets.UTF_8);
+                    connection.stringCommands().set(k, v, Expiration.from(ttl), RedisStringCommands.SetOption.upsert());
+                } catch (JacksonException e) {
+                    log.error("Failed to save rate to Redis [key={}]: {}", key, e.getMessage());
+                }
             }
-        }
+            return null;
+        });
     }
 
     public List<ExchangeRateDto> getAllRates(String source, String baseCurrency, String currency) {
@@ -46,8 +58,12 @@ public class RateCacheService {
                 + (baseCurrency != null ? baseCurrency.toUpperCase() : "*") + ":"
                 + (currency != null ? currency.toUpperCase() : "*");
 
-        Set<String> keys = redisTemplate.keys(pattern);
-        if (keys == null || keys.isEmpty()) return List.of();
+        List<String> keys = new ArrayList<>();
+        ScanOptions scanOptions = ScanOptions.scanOptions().match(pattern).count(100).build();
+        try (Cursor<String> cursor = redisTemplate.scan(scanOptions)) {
+            cursor.forEachRemaining(keys::add);
+        }
+        if (keys.isEmpty()) return List.of();
 
         return keys.stream()
                 .map(k -> redisTemplate.opsForValue().get(k))

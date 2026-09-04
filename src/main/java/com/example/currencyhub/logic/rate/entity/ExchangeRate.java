@@ -15,14 +15,10 @@ import java.time.Instant;
 
 @Document(collection = "exchange_rate")
 @CompoundIndexes({
-        @CompoundIndex(name = "idx_source_base_ccy_published",
-                def = "{'source': 1, 'baseCurrency': 1, 'currency': 1, 'providerPublishedAt': 1}"),
-        @CompoundIndex(name = "idx_source_fetched_at",
-                def = "{'source': 1, 'fetchedAt': 1}"),
-        @CompoundIndex(name = "idx_base_ccy_currency",
-                def = "{'baseCurrency': 1, 'currency': 1}"),
-        @CompoundIndex(name = "idx_metadata_is_backfill",
-                def = "{'metadata.isBackfill': 1}")
+        @CompoundIndex(name = "idx_base_ccy_currency_fetched_at",
+                def = "{'baseCurrency': 1, 'currency': 1, 'fetchedAt': 1}"),
+        @CompoundIndex(name = "idx_source_base_ccy_currency_fetched_at",
+                def = "{'source': 1, 'baseCurrency': 1, 'currency': 1, 'fetchedAt': 1}")
 })
 @Data
 @Builder

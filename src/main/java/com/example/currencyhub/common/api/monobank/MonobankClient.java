@@ -1,24 +1,16 @@
 package com.example.currencyhub.common.api.monobank;
 
 import com.example.currencyhub.common.api.ExchangeRateProvider;
-import com.example.currencyhub.common.exception.ProviderException;
+import com.example.currencyhub.common.api.ProviderHttpExecutor;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +26,7 @@ public class MonobankClient implements ExchangeRateProvider {
     private static final int UAH_CODE = 980;
 
     private final AppProperties properties;
-    private final HttpClient httpClient;
+    private final ProviderHttpExecutor httpExecutor;
     private final ObjectMapper objectMapper;
     private final CurrencyIsoMapper currencyIsoMapper;
 
@@ -59,38 +51,9 @@ public class MonobankClient implements ExchangeRateProvider {
     }
 
     @Override
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchCurrentRates() throws Exception {
         String url = properties.getProviders().getMonobank().getBaseUrl() + "/bank/currency";
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(properties.getExternalApi().getTimeoutSeconds()))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        int status = response.statusCode();
-        if (status == 429) {
-            throw new ProviderException(SOURCE, 429, "Monobank rate limit exceeded", true);
-        }
-        if (status >= 400 && status < 500) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Monobank", false);
-        }
-        if (status != 200) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Monobank", true);
-        }
+        var response = httpExecutor.get(SOURCE, url, "application/json", Map.of());
 
         List<Map<String, Object>> rawList = objectMapper.readValue(response.body(), new TypeReference<>() {});
         Instant fetchedAt = Instant.now();

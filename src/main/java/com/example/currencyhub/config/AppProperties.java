@@ -23,22 +23,29 @@ public class AppProperties {
 
     @Data
     public static class ExternalApi {
+        @Min(value = 1, message = "{app.external-api.timeout-seconds.min}")
         private int timeoutSeconds;
+        @Min(value = 1, message = "{app.external-api.concurrency-limit.min}")
         private int concurrencyLimit;
         @Min(value = 1, message = "{app.external-api.retry-attempts.min}")
         private int retryAttempts;
+        @Min(value = 1, message = "{app.external-api.retry-initial-delay-ms.min}")
         private long retryInitialDelayMs;
+        @Min(value = 1, message = "{app.external-api.retry-max-delay-ms.min}")
         private long retryMaxDelayMs;
     }
 
     @Data
     public static class Backfill {
+        @Min(value = 1, message = "{app.backfill.default-concurrency-limit.min}")
         private int defaultConcurrencyLimit;
+        @Min(value = 1, message = "{app.backfill.max-concurrency-limit.min}")
         private int maxConcurrencyLimit;
     }
 
     @Data
     public static class Redis {
+        @Min(value = 1, message = "{app.redis.current-rates-ttl-minutes.min}")
         private int currentRatesTtlMinutes;
     }
 
@@ -49,7 +56,6 @@ public class AppProperties {
         private ProviderConfig monobank = new ProviderConfig();
         private ProviderConfig frankfurter = new ProviderConfig();
         private ProviderConfig openExchangeRates = new ProviderConfig();
-        private ProviderConfig exchangeRateApi = new ProviderConfig();
         private ProviderConfig ecb = new ProviderConfig();
     }
 

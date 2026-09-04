@@ -38,3 +38,6 @@ out/
 
 ### Cloude Code ###
 .claude/
+
+### Env secrets ###
+.env

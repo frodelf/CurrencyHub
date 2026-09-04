@@ -1,24 +1,16 @@
 package com.example.currencyhub.common.api.privatbank;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.exception.ProviderException;
+import com.example.currencyhub.common.api.ProviderHttpExecutor;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -35,7 +27,7 @@ public class PrivatBankClient implements BackfillCapableProvider {
     private static final DateTimeFormatter PB_DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final AppProperties properties;
-    private final HttpClient httpClient;
+    private final ProviderHttpExecutor httpExecutor;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -59,20 +51,9 @@ public class PrivatBankClient implements BackfillCapableProvider {
     }
 
     @Override
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchCurrentRates() throws Exception {
         String url = properties.getProviders().getPrivatbank().getBaseUrl() + "/pubinfo?exchange&coursid=5";
-        HttpResponse<String> response = doGet(url);
-        ensureSuccess(response.statusCode(), url);
+        var response = httpExecutor.get(SOURCE, url, "application/json", Map.of());
 
         List<Map<String, Object>> rawList = objectMapper.readValue(response.body(), new TypeReference<>() {});
         Instant fetchedAt = Instant.now();
@@ -93,22 +74,11 @@ public class PrivatBankClient implements BackfillCapableProvider {
 
     @Override
     @SuppressWarnings("unchecked")
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchHistoricalRates(LocalDate date) throws Exception {
         String dateStr = date.format(PB_DATE_FORMAT);
         String url = properties.getProviders().getPrivatbank().getBaseUrl()
                 + "/exchange_rates?json&date=" + dateStr;
-        HttpResponse<String> response = doGet(url);
-        ensureSuccess(response.statusCode(), url);
+        var response = httpExecutor.get(SOURCE, url, "application/json", Map.of());
 
         Map<String, Object> rawMap = objectMapper.readValue(response.body(), new TypeReference<>() {});
         List<Map<String, Object>> rates = (List<Map<String, Object>>) rawMap.get("exchangeRate");
@@ -129,25 +99,6 @@ public class PrivatBankClient implements BackfillCapableProvider {
                         publishedAt,
                         item))
                 .toList();
-    }
-
-    private HttpResponse<String> doGet(String url) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(properties.getExternalApi().getTimeoutSeconds()))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    private void ensureSuccess(int statusCode, String url) {
-        if (statusCode >= 400 && statusCode < 500 && statusCode != 429) {
-            throw new ProviderException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url, false);
-        }
-        if (statusCode != 200) {
-            throw new ProviderException(SOURCE, statusCode, "HTTP " + statusCode + " from " + url, true);
-        }
     }
 
     private BigDecimal parseBigDecimal(Object value) {

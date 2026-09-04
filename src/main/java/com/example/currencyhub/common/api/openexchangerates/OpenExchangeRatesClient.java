@@ -1,24 +1,16 @@
 package com.example.currencyhub.common.api.openexchangerates;
 
 import com.example.currencyhub.common.api.BackfillCapableProvider;
-import com.example.currencyhub.common.exception.ProviderException;
+import com.example.currencyhub.common.api.ProviderHttpExecutor;
 import com.example.currencyhub.logic.rate.model.ExchangeRateDto;
 import com.example.currencyhub.config.AppProperties;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -33,7 +25,7 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
     private static final String SOURCE = "OPEN_EXCHANGE_RATES";
 
     private final AppProperties properties;
-    private final HttpClient httpClient;
+    private final ProviderHttpExecutor httpExecutor;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -58,58 +50,21 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
     }
 
     @Override
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchCurrentRates() throws Exception {
-        String url = properties.getProviders().getOpenExchangeRates().getBaseUrl()
-                + "/latest.json?app_id=" + properties.getProviders().getOpenExchangeRates().getApiKey();
+        String url = properties.getProviders().getOpenExchangeRates().getBaseUrl() + "/latest.json";
         return fetchFromUrl(url, Instant.now());
     }
 
     @Override
-    @Retryable(
-            retryFor = {ProviderException.class, IOException.class},
-            exceptionExpression = "#{#root instanceof T(java.io.IOException) or #root.retryable}",
-            maxAttemptsExpression = "${app.external-api.retry-attempts}",
-            backoff = @Backoff(
-                    delayExpression = "${app.external-api.retry-initial-delay-ms}",
-                    multiplier = 2.0,
-                    maxDelayExpression = "${app.external-api.retry-max-delay-ms}"
-            )
-    )
     public List<ExchangeRateDto> fetchHistoricalRates(LocalDate date) throws Exception {
-        String url = properties.getProviders().getOpenExchangeRates().getBaseUrl()
-                + "/historical/" + date + ".json?app_id="
-                + properties.getProviders().getOpenExchangeRates().getApiKey();
+        String url = properties.getProviders().getOpenExchangeRates().getBaseUrl() + "/historical/" + date + ".json";
         return fetchFromUrl(url, date.atStartOfDay(ZoneOffset.UTC).toInstant());
     }
 
     @SuppressWarnings("unchecked")
     private List<ExchangeRateDto> fetchFromUrl(String url, Instant publishedAt) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(properties.getExternalApi().getTimeoutSeconds()))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        int status = response.statusCode();
-        if (status >= 400 && status < 500 && status != 429) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates", false);
-        }
-        if (status != 200) {
-            throw new ProviderException(SOURCE, status, "HTTP " + status + " from Open Exchange Rates", true);
-        }
+        String apiKey = properties.getProviders().getOpenExchangeRates().getApiKey();
+        var response = httpExecutor.get(SOURCE, url, "application/json", Map.of("Authorization", "Token " + apiKey));
 
         Map<String, Object> rawMap = objectMapper.readValue(response.body(), new TypeReference<>() {});
         String base = (String) rawMap.get("base");
@@ -126,7 +81,7 @@ public class OpenExchangeRatesClient implements BackfillCapableProvider {
                         null,
                         fetchedAt,
                         publishedAt,
-                        rawMap))
+                        Map.of("currency", entry.getKey(), "rate", entry.getValue(), "base", base)))
                 .toList();
     }
 }
