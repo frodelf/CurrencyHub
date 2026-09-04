@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.NoSuchElementException;
@@ -53,6 +54,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleNotFound(NoSuchElementException ex, HttpServletRequest request) {
         return ResponseEntity.status(404)
                 .body(new ApiError(404, "Not Found", ex.getMessage(), request.getRequestURI(), Instant.now()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResource(NoResourceFoundException ex, HttpServletRequest request) {
+        return ResponseEntity.status(404)
+                .body(new ApiError(404, "Not Found", "No endpoint " + request.getRequestURI(),
+                        request.getRequestURI(), Instant.now()));
     }
 
     @ExceptionHandler(Exception.class)
