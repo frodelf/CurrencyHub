@@ -1,0 +1,164 @@
+{
+  "info": {
+    "name": "CurrencyHub",
+    "description": "Exchange Rates Aggregator — deployed EC2 instance (via Traefik on port 80, actuator on 8082 direct).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://16.170.225.53"
+    }
+  ],
+  "item": [
+    {
+      "name": "Rates",
+      "item": [
+        {
+          "name": "Current rates (all)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rates/current",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rates", "current"]
+            }
+          }
+        },
+        {
+          "name": "Current rates (filtered)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rates/current?baseCurrency=USD&currency=UAH",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rates", "current"],
+              "query": [
+                { "key": "source", "value": "", "disabled": true },
+                { "key": "baseCurrency", "value": "USD" },
+                { "key": "currency", "value": "UAH" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Current rate (by source/base/currency)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rates/current/NBU/USD/UAH",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rates", "current", "NBU", "USD", "UAH"]
+            }
+          }
+        },
+        {
+          "name": "History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rates/history?baseCurrency=USD&currency=UAH&from=2026-08-01&to=2026-09-04&page=0&size=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rates", "history"],
+              "query": [
+                { "key": "source", "value": "", "disabled": true },
+                { "key": "baseCurrency", "value": "USD" },
+                { "key": "currency", "value": "UAH" },
+                { "key": "from", "value": "2026-08-01" },
+                { "key": "to", "value": "2026-09-04" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "50" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Manual refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sources\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rates/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rates", "refresh"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Providers",
+      "item": [
+        {
+          "name": "List providers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "providers"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Backfill",
+      "item": [
+        {
+          "name": "Start backfill",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sources\": [\"NBU\"],\n  \"from\": \"2026-08-01\",\n  \"to\": \"2026-08-31\",\n  \"baseCurrencies\": [],\n  \"currencies\": [],\n  \"concurrencyLimit\": 3\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backfill",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backfill"]
+            }
+          }
+        },
+        {
+          "name": "Backfill status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backfill/REPLACE_WITH_JOB_ID",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backfill", "REPLACE_WITH_JOB_ID"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Actuator",
+      "item": [
+        {
+          "name": "Health (direct, port 8082)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://16.170.225.53:8082/actuator/health",
+              "protocol": "http",
+              "host": ["16", "170", "225", "53"],
+              "port": "8082",
+              "path": ["actuator", "health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
